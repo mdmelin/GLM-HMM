@@ -1,0 +1,155 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Nov  8 15:21:11 2021
+
+@author: mmelin
+
+a modified version of musall_datainspection.py designed to work with the data structure of Simon's encoding model mice'
+
+run this as __main__ to get all session info and place into text file
+
+Other helper functionality for encodingModel_trainGLMHMM.py is also included
+
+"""
+import numpy as np
+import scipy.io as sio
+import os
+import glob
+import scipy.stats as spstats
+
+
+def createSessionTxtFile(dpath,mouse):
+    datadir = os.path.join(dpath,mouse,'SpatialDisc')
+    savefile = os.path.join(dpath,mouse,'SesionData.txt')
+    session_dates = [name for name in os.listdir(datadir) if os.path.isdir(os.path.join(datadir, name))] #get directories that contain behavioral session data
+    numsess = len(session_dates)
+    file = open(savefile, 'w')
+
+    for i in range(numsess):
+        sessdate = session_dates[i]
+        print(sessdate)
+        sessiondir = os.path.join(datadir,sessdate)
+        filepath = glob.glob(os.path.join(sessiondir,'*_Session*.mat'))[0] #get filepath to behavioral data
+        numtrials, numcorrect, stimtype, stimside, percentcorrect, correcttrials, choice, stimdict, targstim, diststim, singlespout, assisted, stimtypemean, rewarded, optotype = getSessionData(filepath)
+        writestring = ["\n\n", sessdate,
+                       "\nAssisted = ",str(np.mean(assisted)),
+                       "\nSinglespout = ",str(np.mean(singlespout)),
+                       "\nDiststim mean (discrimination) = ",str(np.mean(diststim)),
+                       "\nModality = ",str(np.mean(stimtypemean)),
+                       "\nNumber of trials = ", str(numtrials),
+                       "\nNumber of correct trials = ", str(numcorrect),
+                       "\nPercent trials correct = ", str(percentcorrect)]
+        file.writelines(writestring) #write the data above to text file
+    file.close()
+
+def getSessionData(filepath): # get data from a single session, add modality, assisted, singlespout, etc. 
+    importfile = sio.loadmat(filepath)
+    choice = importfile['SessionData']['ResponseSide'][0, 0] - 1
+    
+    numtrials = int(importfile['SessionData']['nTrials'])
+    stimside = importfile['SessionData']['CorrectSide'][0, 0] - 1
+    stimtypes = importfile['SessionData']['StimType'][0, 0]
+    stimstructs = importfile['SessionData']['stimEvents'][0,0]
+    targstim = importfile['SessionData']['TargStim'][0,0]
+    diststim = importfile['SessionData']['DistStim'][0,0]
+    assisted = importfile['SessionData']['Assisted'][0,0]
+    singlespout = importfile['SessionData']['SingleSpout'][0,0]
+    rewarded = importfile['SessionData']['Rewarded'][0,0]
+    try:
+        optotype = importfile['SessionData']['optoType'][0,0] #get the opto data if it exists
+    except ValueError:
+        #print("No opto in this session")
+        optotype = np.empty((1,numtrials))
+        optotype[:,:] = np.nan #make opto data NaN if it doesn't exist
+    
+    correcttrials = np.multiply(1, choice == stimside)
+    percentcorrect = round(np.sum(correcttrials)/numtrials, 3)
+    numcorrect = np.sum(correcttrials)
+    stimtypemean = np.mean(stimtypes)
+    
+    allleftclicks = []
+    allrightclicks = []
+    allleftflashes = []
+    allrightflashes = []
+    
+    for i in range(numtrials): 
+        stimevent = stimstructs[0,i]
+        numleftclicks = np.size(stimevent[0,0])
+        numrightclicks = np.size(stimevent[0,1])
+        numleftflashes = np.size(stimevent[0,2])
+        numrightflashes = np.size(stimevent[0,3])
+        
+        
+        allleftclicks.append(numleftclicks)
+        allrightclicks.append(numrightclicks)
+        allleftflashes.append(numleftflashes)
+        allrightflashes.append(numrightflashes)
+        
+    #print('\n' + filepath[39:] + " left click rate: " + str(rateleftclicks))
+    #print('\n' + filepath[39:] + " right click rate: " + str(raterightclicks))
+    
+    stimdict = {'laudio': allleftclicks, 'raudio': allrightclicks, 'lvis': allleftflashes, 'rvis': allrightflashes}
+    
+    
+    return numtrials, numcorrect, stimtypes, stimside, percentcorrect, correcttrials, choice, stimdict, targstim, diststim, singlespout, assisted, stimtypemean, rewarded, optotype
+
+def formatSessions(filelist,input_dim,modality):
+    allchoices = []
+    allstimsides = []
+    allnumtrials = []
+    inpts = []
+    alltargstim = []
+    alldiststim = []
+    num_sess = len(filelist)
+    used_sessions = np.ones(num_sess)
+    print('\nRemoving trials with no choice on current trial and with opto stim\n\n')
+    for i in range(num_sess):
+        numtrials, numcorrect, stimtype, stimside, percentcorrect, correcttrials, choice, stimdict, targstim, diststim, singlespout, assisted, stimtypemean, rewarded, optotype = getSessionData(filelist[i])
+        
+        if modality == 'audio':
+            desired_modality = np.array(stimtype == 2)
+        elif modality == 'visual':
+            desired_modality = np.array(stimtype == 1)
+        elif modality == 'tactile':
+            print('Not working yet for tactile')
+        
+        if np.sum(desired_modality) / numtrials < .9: #if less than 90 percent of trials are in the desired modality
+            used_sessions[i] = 0 #denote that this trial is not used for training
+            continue #skip this session in the for loop
+        
+        targstim = np.int32(targstim)
+        diststim = np.int32(diststim)
+        
+        nochoicetrials = np.isnan(choice) # remove trials with no choice and with opto
+        nooptotrials = np.isnan(optotype)
+        choice = choice[np.logical_and(~nochoicetrials,nooptotrials)]
+        choice = np.int32(choice)
+        choice = np.expand_dims(choice, axis=1)
+        
+        stimside = stimside[np.logical_and(~nochoicetrials,nooptotrials)]
+        targstim = targstim[np.logical_and(~nochoicetrials,nooptotrials)]
+        diststim = diststim[np.logical_and(~nochoicetrials,nooptotrials)]
+        
+        numtrials_withchoice = choice.size  #number of trials per session with choice
+        
+        allchoices.append(choice)
+        allstimsides.append(stimside)
+        allnumtrials.append(numtrials_withchoice)
+        alltargstim.append(targstim)
+        alldiststim.append(diststim)
+        
+        temp = np.negative(np.ones([numtrials_withchoice,input_dim]))
+        #right now the following line is sign flipped
+        coherence = np.divide(np.array(stimdict['laudio']), np.array(stimdict['laudio']) + np.array(stimdict['raudio']))#only audio trials right now
+        coherence = coherence[np.squeeze(np.logical_and(~nochoicetrials,nooptotrials))] #remove trials without choice and opto
+        coherence = np.subtract(coherence,.5) #zero center
+        #coherence = coherence / np.std(coherence) #normalize
+        temp[:,0] = coherence 
+        inpts.append(temp)
+        
+    print('From the selected trials, there are '+str(len(allchoices))+' that match the desired sensory modality and will be used to train the model\n')
+    return used_sessions, allchoices, allstimsides, allnumtrials, inpts, alltargstim, alldiststim
+
+
+if __name__ == '__main__':
+    createSessionTxtFile('Y:/Widefield','mSM64')
