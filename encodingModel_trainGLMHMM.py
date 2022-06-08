@@ -14,6 +14,8 @@ import os
 import pickle
 import glob
 from encodingModel_datainspection import formatSessions
+import time
+from datetime import datetime
 #%% important variables - Set the parameters of the GLM-HMM
 
 num_states = 3        # number of discrete states
@@ -21,27 +23,49 @@ obs_dim = 1           # number of observed dimensions - choice
 num_categories = 2    # number of categories for output - left or right
 input_dim = 2         # input dimensions - stimulus and bias term
 tol = 10**-9 # tolerance, default value 10**-9
-N_iters = 1000 # maximum number of EM iterations. Fitting with stop earlier if increase in LL is below tolerance specified by tolerance parameter
-mthd = 'map' # training method - either 'em' or 'map'
+N_iters = 5000 #default 200. maximum number of EM iterations. Fitting with stop earlier if increase in LL is below tolerance specified by tolerance parameter
+mthd = 'map' # training method - either 'mle' or 'map'
 
-saving = True
-dpath = 'Y:/Widefield'
+
+saving = False
+subselect = True
+dpath = 'X:/Widefield'
 mouse = 'mSM64'
 modality = 'audio'
 
+
+#subselectarray = np.arange(20,30) #mSM63 all discrimination audio sessions, arange doesnt include end point
+subselectarray = np.arange(16,36) #mSM64 all discrimination audio sessions
+#subselectarray = np.arange(12,28) #msm65 all discrimination audio sessions
+#subselectarray = np.arange(13,29) #mSM66 all discrimination audio sessions
+
+
+
 #%% Get behavioral data - need to incoroporate stimulus and only correct trials
 if saving:
-        savename = input('Enter a name for saving data: ') # name for saved .mat file
+    savename = input('Enter a name for saving data: ') # name for saved .mat file
+
 print('\nUsing ONLY ' + modality + ' sessions')
 datadir = os.path.join(dpath,mouse,'SpatialDisc')
 session_dates = [name for name in os.listdir(datadir) if os.path.isdir(os.path.join(datadir, name))] #get directories that contain behavioral session data
+session_dates = sorted(session_dates,key=lambda date: datetime.strptime(date[:11], "%d-%b-%Y")) #parse and sort dates in order
+
+if subselect: #allows the user to select a subset of sessions to train from. Ideally the user will only select from the desired modality, but sessions from different modalities will be discarded anyways
+    for i in range(len(session_dates)):
+        print(str(i) + ': ' + session_dates[i])
+    session_dates = [session_dates[x] for x in subselectarray]
+    print('\nUser has selected ' + str(session_dates) + '\n')
+
+
 numsess = len(session_dates)        
 bhv_dir = [os.path.join(datadir,date)  for date in session_dates] #directories with behavior files
 bhv_file_paths = [glob.glob(os.path.join(directory,'*_Session*.mat'))[0] for directory in bhv_dir] #list of full paths to behavior files
 used_sessions, allchoices, allstimsides, allnumtrials, inpts, alltargstim, alldiststim = formatSessions(bhv_file_paths,input_dim,modality) #takes file list and outputs formatted session data
+
 np_session_dates = np.asarray(session_dates) #convert to np array for logical indexing
-session_dates = np_session_dates[used_sessions == 1]
-session_dates = np.ndarray.tolist(session_dates) #convert back to list
+session_dates = np_session_dates[used_sessions == 1] #the sessions in the desired modality (audio modality value is 1), this has to be done AFTER subset selection because subset selection occurs over all modalities. otherwise indexing would be messed up. 
+session_dates = session_dates.tolist()
+
 #%% fit the GLM-HMM with MLE, use MAP for low trial number
 if mthd == 'mle':
     glmhmm = ssm.HMM(num_states, obs_dim, input_dim, observations="input_driven_obs", 
@@ -69,7 +93,7 @@ plt.show()
 #%% Plot weights from generated models
 
 fig = plt.figure(figsize=(4, 3), dpi=80, facecolor='w', edgecolor='k')
-cols = ['#ff7f00', '#4daf4a', '#377eb8', '#ff0000', '#ff7f00', '#ff7f20']
+cols = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 recovered_weights = glmhmm.observations.params
 for k in range(num_states):
     if k ==0:
@@ -129,12 +153,13 @@ for sess_id in range(len(session_dates)):
     plt.yticks([0, 0.5, 1], fontsize = 10)
     plt.xlabel("trial #", fontsize = 15)
     plt.ylabel("p(state)", fontsize = 15)
-
-
+    plt.show()
 #%% Saving
 if saving:
+    userin = input(" Please enter the index for each state (attentive, leftbias, rightbias): ")
+    state_label_indices = np.array(userin.split())
     savedir = os.path.join(dpath, mouse, 'glm_hmm_models')
-    savedic = {'glmhmm_params': glmhmm, 'method': mthd, 'model_training_sessions': session_dates, 'choices':allchoices, 'stimsides':allstimsides,'model_inputs':inpts, 'targ':alltargstim, 'dist': alldiststim, 'posterior_probs': posterior_probs}
+    savedic = {'glmhmm_params': glmhmm, 'state_label_indices': state_label_indices, 'method': mthd, 'model_training_sessions': session_dates, 'choices':allchoices, 'stimsides':allstimsides,'model_inputs':inpts, 'targ':alltargstim, 'dist': alldiststim, 'posterior_probs': posterior_probs}
     sio.savemat(os.path.join(savedir, savename + '.mat'),savedic)
     with open(os.path.join(savedir, savename + '.pickle'), 'wb') as handle:
         pickle.dump(glmhmm, handle, protocol=pickle.HIGHEST_PROTOCOL)
