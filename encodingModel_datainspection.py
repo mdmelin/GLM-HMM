@@ -141,6 +141,13 @@ def formatSessions(filelist,input_dim,modality):
         targstim = targstim[np.logical_and(~nochoicetrials,nooptotrials)]
         diststim = diststim[np.logical_and(~nochoicetrials,nooptotrials)]
         
+        lstim = np.zeros(len(stimside))
+        rstim = np.zeros(len(stimside))
+        lstim[stimside==0] = targstim[stimside==0]
+        lstim[stimside==1] = diststim[stimside==1]
+        rstim[stimside==0] = diststim[stimside==0]
+        rstim[stimside==1] = targstim[stimside==1]
+        
         numtrials_withchoice = choice.size  #number of trials per session with choice
         
         allchoices.append(choice)
@@ -150,13 +157,32 @@ def formatSessions(filelist,input_dim,modality):
         alldiststim.append(diststim)
         
         temp = np.negative(np.ones([numtrials_withchoice,input_dim]))
+        
+        # #this is using stimdict, not targstim
+        # #right now the following line is sign flipped
+        # #coherence = np.divide(np.array(stimdict['laudio']), np.array(stimdict['laudio']) + np.array(stimdict['raudio']))#only audio trials right now
+        # coherence = np.array(stimdict['laudio']) - np.array(stimdict['raudio'])
+        # coherence = coherence[np.squeeze(np.logical_and(~nochoicetrials,nooptotrials))] #remove trials without choice and opto
+        # #coherence = np.subtract(coherence,.5) #zero center
+        # #coherence = coherence / np.std(coherence) #normalize
+        # coherence = coherence / np.max(coherence) #normalize
+        # temp[:,0] = coherence 
+        
+        #this is using targstim
         #right now the following line is sign flipped
-        coherence = np.divide(np.array(stimdict['laudio']), np.array(stimdict['laudio']) + np.array(stimdict['raudio']))#only audio trials right now
-        coherence = coherence[np.squeeze(np.logical_and(~nochoicetrials,nooptotrials))] #remove trials without choice and opto
-        coherence = np.subtract(coherence,.5) #zero center
-        coherence = coherence / np.std(coherence) #normalize
-        #coherence = coherence / np.max(coherence) #normalize
+        #coherence = np.divide(lstim, lstim + rstim)#only audio trials right now
+        #coherence = np.subtract(coherence,.5) #zero center
+        coherence = lstim - rstim
+        #coherence = coherence / np.std(coherence) #normalize
+        coherence = coherence / np.max(coherence) #normalize
         temp[:,0] = coherence 
+        
+        # #this separates out right and left
+        # rstim = rstim / np.max(rstim)
+        # lstim = lstim / np.max(lstim)
+        # temp[:,0] = -rstim
+        # temp[:,1] = lstim
+        
         inpts.append(temp)
         
     print('From the ', str(num_sess), ' selected sessions, there are '+str(len(allchoices))+' that match the desired sensory modality and will be used to train the model\n')

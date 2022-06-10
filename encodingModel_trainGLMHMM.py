@@ -23,24 +23,28 @@ obs_dim = 1           # number of observed dimensions - choice
 num_categories = 2    # number of categories for output - left or right
 input_dim = 2         # input dimensions - stimulus and bias term
 tol = 10**-9 # tolerance, default value 10**-9
-N_iters = 5000 #default 200. maximum number of EM iterations. Fitting with stop earlier if increase in LL is below tolerance specified by tolerance parameter
+N_iters = 1000 #default 200. maximum number of EM iterations. Fitting with stop earlier if increase in LL is below tolerance specified by tolerance parameter
 mthd = 'map' # training method - either 'mle' or 'map'
 
 
-saving = False
+saving = True
 subselect = True
 dpath = 'X:/Widefield'
-mouse = 'mSM64'
+mouse = 'mSM65'
 modality = 'audio'
 
-
 #subselectarray = np.arange(20,30) #mSM63 all discrimination audio sessions, arange doesnt include end point
-subselectarray = np.arange(16,36) #mSM64 all discrimination audio sessions
-#subselectarray = np.arange(12,28) #msm65 all discrimination audio sessions
-#subselectarray = np.arange(13,29) #mSM66 all discrimination audio sessions
+#subselectarray = np.arange(16,36) #mSM64 all discrimination audio sessions
+#subselectarray = np.arange(26,36)
+subselectarray = np.concatenate((np.arange(12,18),np.arange(19,25))) #msm65 all discrimination audio sessions
+#subselectarray = np.concatenate((np.arange(12,18),np.arange(19,22))) 
+#subselectarray = np.arange(11,27) #mSM66 all discrimination audio sessions
 
-
-
+# the following are for expert DETECTION sessions (the last 5 sessions)
+# subselectarray = np.array([16,17,18,19])
+# subselectarray = np.arange(11,16)
+# subselectarray = np.arange(7,12)
+# subselectarray = np.arange(6,11)
 #%% Get behavioral data - need to incoroporate stimulus and only correct trials
 if saving:
     savename = input('Enter a name for saving data: ') # name for saved .mat file
